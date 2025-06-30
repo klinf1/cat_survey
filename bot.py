@@ -1,3 +1,5 @@
+import logging
+import logging.handlers
 import os
 from typing import Literal, TypedDict, cast, List
 
@@ -8,6 +10,7 @@ from telegram import (
     InputMediaPhoto,
     InputMediaDocument,
     InputMediaAudio,
+    error,
 )
 from telegram.helpers import effective_message_type
 from telegram.ext import (
@@ -22,7 +25,18 @@ from dotenv import load_dotenv
 load_dotenv()
 group_id = os.getenv('CHAT')
 survey_id = os.getenv('CHAT_SURVEYS')
-
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+handler = logging.handlers.RotatingFileHandler(
+        'cat_log.log',
+        maxBytes=50000000,
+        backupCount=5
+    )
+formatter = logging.Formatter(
+    '%(asctime)s - %(levelname)s - %(filename)s - %(lineno)s - %(funcName)s - %(message)s'
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 MEDIA_GROUP_TYPES = {
     "audio": InputMediaAudio,
@@ -38,6 +52,12 @@ class MsgDict(TypedDict):
     caption: str
     post_id: int
     sender_id: int
+
+
+async def process_exception(bot, id, err: Exception):
+    logger.exception(err)
+    text = "Упс! Неизвестная ошибка. Пожалуйста, свяжитесь с админинстрацией."
+    await bot.send_message(id, text)
 
 
 def edit_text(text: str, id: str) -> str:
@@ -100,43 +120,59 @@ async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
     else:
         await bot.send_media_group(survey_id, media)
         await reply(bot, sender)
+        logger.debug(f'Media group processed for {sender}')
 
 
 async def receive_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = edit_text(update.message.text, update.effective_chat.id)
-    await send_survey(text, context)
-    await reply(context.bot, update.effective_chat.id)
+    try:
+        await send_survey(text, context)
+        await reply(context.bot, update.effective_chat.id)
+        logger.debug(f'Text processed for {update.effective_chat.id}')
+    except Exception as err:
+        await process_exception(context.bot, update.effective_chat.id, err)
 
 
 async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message: Message = update.effective_message
-    if not message.media_group_id:
-        text = update.message.caption
-        if "/survey" in text:
-            text = edit_text(text or "", update.effective_chat.id)
-            photo = update.message.photo[-1]
-            await send_survey_photo(photo, text, context)
-            await reply(context.bot, update.effective_chat.id)
-    elif message.photo and message.media_group_id:
-        media_type = effective_message_type(message)
-        media_id = message.photo[-1].file_id
-        msg_dict = {
-            "media_type": media_type,
-            "media_id": media_id,
-            "caption": message.caption,
-            "message_id": message.message_id,
-            "sender_id": update.effective_chat.id,
-        }
-        jobs = context.job_queue.get_jobs_by_name(str(message.media_group_id))
-        if jobs:
-            jobs[0].data.append(msg_dict)
-        else:
-            context.job_queue.run_once(
-                callback=send_survey_media_group,
-                when=10,
-                data=[msg_dict],
-                name=str(message.media_group_id),
+    try:
+        if not message.media_group_id:
+            text = update.message.caption
+            if "/survey" in text:
+                text = edit_text(text or "", update.effective_chat.id)
+                photo = update.message.photo[-1]
+                await send_survey_photo(photo, text, context)
+                await reply(context.bot, update.effective_chat.id)
+                logger.debug(f'Image processed for {update.effective_chat.id}')
+        elif message.photo and message.media_group_id:
+            media_type = effective_message_type(message)
+            media_id = message.photo[-1].file_id
+            msg_dict = {
+                "media_type": media_type,
+                "media_id": media_id,
+                "caption": message.caption,
+                "message_id": message.message_id,
+                "sender_id": update.effective_chat.id,
+            }
+            jobs = context.job_queue.get_jobs_by_name(str(message.media_group_id))
+            if jobs:
+                jobs[0].data.append(msg_dict)
+            else:
+                context.job_queue.run_once(
+                    callback=send_survey_media_group,
+                    when=10,
+                    data=[msg_dict],
+                    name=str(message.media_group_id),
+                )
+    except error.BadRequest as err:
+        if "Message caption is too long" in err.message:
+            await context.bot.send_message(
+                update.effective_chat.id,
+                "Пожалуйста, отправьте картинки отдельным сообщением! И не забудьте добавить к ним /survey :)\n" \
+                "Если картинки и не было, то свяжитесь с админинстрацией. Простите!",
             )
+    except Exception as err:
+        await process_exception(context.bot, update.effective_chat.id, err)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -152,7 +188,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         Если твоя анкета не влазит в одно сообщение, можешь отправить частями - но каждое новое тоже нужно начинать с /survey!
 
+        Важно! Если к анкете вы хотите приложить картинку или картинки, ПОЖАЛУЙСТА, отправьте их в следующем сообщении,
+        тоже с командой /survey. Иначе ваше сообщение не дойдет :(
+
         С нетерпением ждем тебя!"""
+    logger.debug(f'Start for {update.effective_chat.id}')
     await context.bot.send_message(update.effective_chat.id, text)
 
 
