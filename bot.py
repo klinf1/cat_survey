@@ -23,17 +23,15 @@ from telegram.ext import (
 from dotenv import load_dotenv
 
 load_dotenv()
-group_id = os.getenv('CHAT')
-survey_id = os.getenv('CHAT_SURVEYS')
+group_id = os.getenv("CHAT")
+survey_id = os.getenv("CHAT_SURVEYS")
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 handler = logging.handlers.RotatingFileHandler(
-        'cat_log.log',
-        maxBytes=50000000,
-        backupCount=5
-    )
+    "cat_log.log", maxBytes=50000000, backupCount=5
+)
 formatter = logging.Formatter(
-    '%(asctime)s - %(levelname)s - %(filename)s - %(lineno)s - %(funcName)s - %(message)s'
+    "%(asctime)s - %(levelname)s - %(filename)s - %(lineno)s - %(funcName)s - %(message)s"
 )
 handler.setFormatter(formatter)
 logger.addHandler(handler)
@@ -93,11 +91,8 @@ async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
     bot = context.bot
     context.job.data = cast(List[MsgDict], context.job.data)
     media = []
-    command = False
-    sender = context.job.data[0].get('sender_id')
+    sender = context.job.data[0].get("sender_id")
     for msg_dict in context.job.data:
-        if msg_dict["caption"] and "/survey" in msg_dict["caption"]:
-            command = True
         caption = (
             edit_text(msg_dict["caption"], str(msg_dict["sender_id"]))
             if msg_dict["caption"]
@@ -110,8 +105,6 @@ async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
         )
     if not media:
         return
-    if not command:
-        return
     if len(media) > 3 and sender:
         await bot.send_message(
             sender,
@@ -120,7 +113,7 @@ async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
     else:
         await bot.send_media_group(survey_id, media)
         await reply(bot, sender)
-        logger.debug(f'Media group processed for {sender}')
+        logger.debug(f"Media group processed for {sender}")
 
 
 async def receive_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -128,7 +121,7 @@ async def receive_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await send_survey(text, context)
         await reply(context.bot, update.effective_chat.id)
-        logger.debug(f'Text processed for {update.effective_chat.id}')
+        logger.debug(f"Text processed for {update.effective_chat.id}")
     except Exception as err:
         await process_exception(context.bot, update.effective_chat.id, err)
 
@@ -138,12 +131,11 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not message.media_group_id:
             text = update.message.caption
-            if "/survey" in text:
-                text = edit_text(text or "", update.effective_chat.id)
-                photo = update.message.photo[-1]
-                await send_survey_photo(photo, text, context)
-                await reply(context.bot, update.effective_chat.id)
-                logger.debug(f'Image processed for {update.effective_chat.id}')
+            text = edit_text(text or "", update.effective_chat.id)
+            photo = update.message.photo[-1]
+            await send_survey_photo(photo, text, context)
+            await reply(context.bot, update.effective_chat.id)
+            logger.debug(f"Image processed for {update.effective_chat.id}")
         elif message.photo and message.media_group_id:
             media_type = effective_message_type(message)
             media_id = message.photo[-1].file_id
@@ -168,7 +160,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if "Message caption is too long" in err.message:
             await context.bot.send_message(
                 update.effective_chat.id,
-                "Пожалуйста, отправьте картинки отдельным сообщением! И не забудьте добавить к ним /survey :)\n" \
+                "Пожалуйста, отправьте картинки отдельным сообщением!"
                 "Если картинки и не было, то свяжитесь с админинстрацией. Простите!",
             )
     except Exception as err:
@@ -184,15 +176,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         Когда закончишь придумывать своего персонажа - отправляй анкету прямо сюда и я ее проверю.
 
-        Для отправки анкеты используй команду /survey [текст анкеты]!
+        Если твоя анкета не влазит в одно сообщение, можешь отправить частями!
 
-        Если твоя анкета не влазит в одно сообщение, можешь отправить частями - но каждое новое тоже нужно начинать с /survey!
-
-        Важно! Если к анкете вы хотите приложить картинку или картинки, ПОЖАЛУЙСТА, отправьте их в следующем сообщении,
-        тоже с командой /survey. Иначе ваше сообщение не дойдет :(
+        Важно! Если к анкете вы хотите приложить картинку или картинки, ПОЖАЛУЙСТА, отправьте их в следующем сообщени.
+        Иначе ваше сообщение не дойдет :(
 
         С нетерпением ждем тебя!"""
-    logger.debug(f'Start for {update.effective_chat.id}')
+    logger.debug(f"Start for {update.effective_chat.id}")
     await context.bot.send_message(update.effective_chat.id, text)
 
 
@@ -205,11 +195,17 @@ def main() -> None:
     app.add_handler(CommandHandler("answer", answer_back))
     app.add_handler(
         MessageHandler(
+            filters=(filters.TEXT & (~filters.Chat(int(survey_id)))),
+            callback=receive_survey,
+        )
+    )
+    app.add_handler(
+        MessageHandler(
             filters.UpdateType.MESSAGE & (~filters.Chat(int(survey_id))), image
         )
     )
     app.run_polling()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
