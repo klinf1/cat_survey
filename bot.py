@@ -1,5 +1,3 @@
-import logging
-import logging.handlers
 import os
 from typing import Literal, TypedDict, cast, List
 
@@ -22,19 +20,12 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 
+from logs import get_logger
+
 load_dotenv()
 group_id = os.getenv("CHAT")
 survey_id = os.getenv("CHAT_SURVEYS")
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-handler = logging.handlers.RotatingFileHandler(
-    "cat_log.log", maxBytes=50000000, backupCount=5
-)
-formatter = logging.Formatter(
-    "%(asctime)s - %(levelname)s - %(filename)s - %(lineno)s - %(funcName)s - %(message)s"
-)
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+logger = get_logger()
 
 MEDIA_GROUP_TYPES = {
     "audio": InputMediaAudio,
@@ -116,6 +107,10 @@ async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
         logger.debug(f"Media group processed for {sender}")
 
 
+async def forward(message, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.forward_message(survey_id, message.chat.id, message.id)
+
+
 async def receive_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = edit_text(update.message.text, update.effective_chat.id)
     try:
@@ -188,7 +183,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main() -> None:
     app = (
-        Application.builder().token(os.getenv("TOKEN")).concurrent_updates(True).build()
+        Application.builder().token(os.getenv("TOKEN")).build()
     )  # type: ignore
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("survey", receive_survey))
