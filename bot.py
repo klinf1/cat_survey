@@ -9,6 +9,7 @@ from telegram import (
     InputMediaDocument,
     InputMediaAudio,
     error,
+    Video,
 )
 from telegram.helpers import effective_message_type
 from telegram.ext import (
@@ -20,6 +21,7 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 
+from db import create_tables, check, ban, unban
 from logs import get_logger
 
 load_dotenv()
@@ -74,8 +76,11 @@ async def send_survey(message: str, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(survey_id, message)
 
 
-async def send_survey_photo(photo, caption: str, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_photo(survey_id, photo, caption)
+async def send_survey_media(media, caption: str, context: ContextTypes.DEFAULT_TYPE):
+    if isinstance(media, Video):
+        await context.bot.send_video(survey_id, media, caption=caption)
+    else:
+        await context.bot.send_photo(survey_id, media, caption)
 
 
 async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
@@ -107,11 +112,10 @@ async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
         logger.debug(f"Media group processed for {sender}")
 
 
-async def forward(message, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.forward_message(survey_id, message.chat.id, message.id)
-
-
 async def receive_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if check(update.message.from_user.id):
+        await context.bot.send_message(update.effective_chat.id, "вы находитесь в черном списке.")
+        return
     text = edit_text(update.message.text, update.effective_chat.id)
     try:
         await send_survey(text, context)
@@ -122,18 +126,27 @@ async def receive_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if check(update.message.from_user.id):
+        await context.bot.send_message(update.effective_chat.id, "вы находитесь в черном списке.")
+        return
     message: Message = update.effective_message
     try:
         if not message.media_group_id:
             text = update.message.caption
             text = edit_text(text or "", update.effective_chat.id)
-            photo = update.message.photo[-1]
-            await send_survey_photo(photo, text, context)
+            if update.message.video:
+                media = update.message.video
+            if update.message.photo:
+                media = update.message.photo[-1]
+            await send_survey_media(media, text, context)
             await reply(context.bot, update.effective_chat.id)
             logger.debug(f"Image processed for {update.effective_chat.id}")
         elif (message.photo or message.video) and message.media_group_id:
             media_type = effective_message_type(message)
-            media_id = message.photo[-1].file_id or message.video.file_id
+            if message.photo:
+                media_id = message.photo[-1].file_id
+            elif message.video:
+                media_id = message.video.file_id
             msg_dict = {
                 "media_type": media_type,
                 "media_id": media_id,
@@ -162,6 +175,40 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await process_exception(context.bot, update.effective_chat.id, err)
 
 
+async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != int(survey_id):
+        return
+    if not context.args[0]:
+        await context.bot.send_message(survey_id, "Укажите id юзера для бана")
+        return
+    try:
+        res = int(context.args[0])
+    except ValueError:
+        await context.bot.send_message(survey_id, "id должно быть числом")
+        return
+    if ban(res):
+        await context.bot.send_message(survey_id, f"Юзер {int(context.args[0])} забанен")
+    else:
+        await context.bot.send_message(survey_id, f"Ошибка бана {int(context.args[0])}")
+
+
+async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != int(survey_id):
+        return
+    if not context.args[0]:
+        await context.bot.send_message(survey_id, "Укажите id юзера для разбана")
+        return
+    try:
+        res = int(context.args[0])
+    except ValueError:
+        await context.bot.send_message(survey_id, "id должно быть числом")
+        return
+    if unban(res):
+        await context.bot.send_message(survey_id, f"Юзер {int(context.args[0])} разбанен")
+    else:
+        await context.bot.send_message(survey_id, f"Ошибка разбана {int(context.args[0])}")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = """
         Здравствуй! Я - бот ролевой "Сердца Племён".
@@ -182,9 +229,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main() -> None:
+    create_tables()
     app = (
         Application.builder().token(os.getenv("TOKEN")).build()
     )  # type: ignore
+    app.add_handler(CommandHandler("ban", ban_user))
+    app.add_handler(CommandHandler("unban", unban_user))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("survey", receive_survey))
     app.add_handler(CommandHandler("answer", answer_back))
