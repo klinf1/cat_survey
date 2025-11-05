@@ -131,9 +131,9 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_survey_photo(photo, text, context)
             await reply(context.bot, update.effective_chat.id)
             logger.debug(f"Image processed for {update.effective_chat.id}")
-        elif message.photo and message.media_group_id:
+        elif (message.photo or message.video) and message.media_group_id:
             media_type = effective_message_type(message)
-            media_id = message.photo[-1].file_id
+            media_id = message.photo[-1].file_id or message.video.file_id
             msg_dict = {
                 "media_type": media_type,
                 "media_id": media_id,
