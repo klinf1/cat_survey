@@ -319,13 +319,13 @@ def main() -> None:
     app.add_handler(CommandHandler("answer", answer_back))
     app.add_handler(
         MessageHandler(
-            filters=(filters.TEXT & (~filters.Chat(int(survey_id)))),
+            filters=(filters.TEXT & (~filters.Chat(int(survey_id))) & (~filters.Chat(int(main_chat)))),
             callback=receive_survey,
         )
     )
     app.add_handler(
         MessageHandler(
-            filters.UpdateType.MESSAGE & (~filters.Chat(int(survey_id))), image
+            filters.UpdateType.MESSAGE & (~filters.Chat(int(survey_id))  & (~filters.Chat(int(main_chat)))), image
         )
     )
     app.add_handler(CallbackQueryHandler(unban_request_callback))
