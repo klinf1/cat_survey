@@ -2,6 +2,7 @@ import os
 from typing import Literal, TypedDict, cast, List
 
 from telegram import (
+    Bot,
     Update,
     Message,
     InputMediaVideo,
@@ -10,6 +11,8 @@ from telegram import (
     InputMediaAudio,
     error,
     Video,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
 )
 from telegram.helpers import effective_message_type
 from telegram.ext import (
@@ -18,15 +21,19 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     filters,
+    ChatMemberHandler,
+    CallbackQueryHandler,
 )
 from dotenv import load_dotenv
 
-from db import create_tables, check, ban, unban
+from db import create_tables, check, check_unbans, ban, unban, user_tried_unban, banlist
 from logs import get_logger
 
 load_dotenv()
 group_id = os.getenv("CHAT")
 survey_id = os.getenv("CHAT_SURVEYS")
+main_chat = int(os.getenv("СHAT_MAIN"))
+unbanner = os.environ["UNBAN_REQUESTS"]
 logger = get_logger()
 
 MEDIA_GROUP_TYPES = {
@@ -112,6 +119,13 @@ async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
         logger.debug(f"Media group processed for {sender}")
 
 
+async def unban_info(bot: Bot, id: int):
+    text = "Здравствуйте! К сожалению, вы были внесены в чёрный список нашей ролевой 😔\n" \
+    "Если вы считаете ваш бан ошибочным или случайным, вы можете отправить единичный запрос " \
+    "на обжалование через команду — /unban_request"
+    await bot.send_message(id, text)
+
+
 async def receive_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if check(update.message.from_user.id):
         await context.bot.send_message(update.effective_chat.id, "вы находитесь в черном списке.")
@@ -188,8 +202,18 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if ban(res):
         await context.bot.send_message(survey_id, f"Юзер {int(context.args[0])} забанен")
+        await unban_info(context.bot, res)
     else:
         await context.bot.send_message(survey_id, f"Ошибка бана {int(context.args[0])}")
+
+
+async def view_bans(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != int(survey_id):
+        return
+    text = 'Список забаненных юзеров:\n'
+    for i in banlist():
+        text += f"{i.chat_id} | {i.username} | tried unban: {i.tried_unban}\n"
+    await context.bot.send_message(survey_id, text)
 
 
 async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -228,12 +252,67 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(update.effective_chat.id, text)
 
 
+async def user_banned_in_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.chat_member.new_chat_member.status == "kicked":
+        logger.info(f"User {update.chat_member.new_chat_member.user.id} banned in main chat")
+        if ban(update.chat_member.new_chat_member.user.id, update.chat_member.new_chat_member.user.username):
+            await context.bot.send_message(
+                survey_id,
+                f"Юзер {update.chat_member.new_chat_member.user.id} {update.chat_member.new_chat_member.user.username} забанен 😎",
+            )
+            await unban_info(context.bot, update.chat_member.new_chat_member.user.id)
+        else:
+            await context.bot.send_message(
+                survey_id,
+                f"Ошибка бана {update.chat_member.new_chat_member.user.id} {update.chat_member.new_chat_member.user.username} 😕",
+            )
+
+
+async def unban_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    def buttons(id: str):
+        keyboard = [
+            [
+                InlineKeyboardButton("Принять", callback_data=f"unban_accept_{id}"),
+                InlineKeyboardButton("Отклонить", callback_data=f"unban_reject_{id}"),
+            ]
+        ]
+        return InlineKeyboardMarkup(keyboard)
+
+    if not check(update.effective_chat.id):
+        return
+    if check_unbans(update.effective_chat.id):
+        await context.bot.send_message(update.effective_chat.id, "Вы уже использовали запрос на разбан.")
+        return
+    user_tried_unban(update.effective_chat.id)
+    req_text = update.effective_message.text.replace("/unban_request", "")
+    if len(req_text) > 1900:
+        req_text = req_text[:1900]
+    text = f"Unban request from user: {update.effective_message.from_user.id} {update.effective_message.from_user.username}\n{req_text}"
+    await context.bot.send_message(unbanner, text, reply_markup=buttons(str(update.effective_message.from_user.id)))
+
+
+async def unban_request_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    _, decision, user_id = update.callback_query.data.split("_")
+    match decision:
+        case "accept":
+            unban(int(user_id))
+            await context.bot.send_message(
+                int(user_id),
+                "Ваша заявка получена! Бан был аннулирован! Вы можете пользоваться анкетологом, вскоре мы добавим вас в инфо-канал.",
+            )
+        case "reject":
+            await context.bot.send_message(int(user_id), "Ваша заявка была отклонена!")
+
+
 def main() -> None:
     create_tables()
     app = (
         Application.builder().token(os.getenv("TOKEN")).build()
     )  # type: ignore
+    app.add_handler(ChatMemberHandler(user_banned_in_main, chat_member_types=ChatMemberHandler.CHAT_MEMBER, chat_id=main_chat))
     app.add_handler(CommandHandler("ban", ban_user))
+    app.add_handler(CommandHandler("unban_request", unban_request))
     app.add_handler(CommandHandler("unban", unban_user))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("survey", receive_survey))
@@ -249,7 +328,8 @@ def main() -> None:
             filters.UpdateType.MESSAGE & (~filters.Chat(int(survey_id))), image
         )
     )
-    app.run_polling()
+    app.add_handler(CallbackQueryHandler(unban_request_callback))
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
