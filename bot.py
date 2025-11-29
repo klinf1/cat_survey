@@ -140,6 +140,8 @@ async def receive_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if "unban_request" in update.message.text:
+        return
     if check(update.message.from_user.id):
         await context.bot.send_message(update.effective_chat.id, "вы находитесь в черном списке.")
         return
