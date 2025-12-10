@@ -80,7 +80,9 @@ async def reply(bot, id):
 
 
 async def send_survey(message: str, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(survey_id, message)
+    messages = [message[i:i+1900] for i in range(0, len(message), 1900)]
+    for message in messages:
+        await context.bot.send_message(survey_id, message)
 
 
 async def send_survey_media(media, caption: str, context: ContextTypes.DEFAULT_TYPE):
