@@ -58,9 +58,14 @@ async def process_exception(bot, id, err: Exception):
     await bot.send_message(id, text)
 
 
-def edit_text(text: str, id: str) -> str:
+def edit_text(text: str, id: str, username: str | None) -> str:
     text = text.replace("/survey", "")
-    text = f"Sender chat id: {id}\n\n" + text + f"\n#анкета{id}"
+    text = (
+        f"Sender chat id: {id}\n\n"
+        + text
+        + f"\n#анкета{id}"
+        + (f"\nusername: {username}" if username else "")
+    )
     return text
 
 
@@ -99,7 +104,7 @@ async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
     sender = context.job.data[0].get("sender_id")
     for msg_dict in context.job.data:
         caption = (
-            edit_text(msg_dict["caption"], str(msg_dict["sender_id"]))
+            edit_text(msg_dict["caption"], str(msg_dict["sender_id"]), msg_dict["sender_username"])
             if msg_dict["caption"]
             else msg_dict["caption"]
         )
@@ -132,7 +137,7 @@ async def receive_survey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if check(update.message.from_user.id):
         await context.bot.send_message(update.effective_chat.id, "вы находитесь в черном списке.")
         return
-    text = edit_text(update.message.text, update.effective_chat.id)
+    text = edit_text(update.message.text, update.effective_chat.id, update.effective_sender.username)
     try:
         await send_survey(text, context)
         await reply(context.bot, update.effective_chat.id)
@@ -153,7 +158,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not message.media_group_id:
             text = update.message.caption
-            text = edit_text(text or "", update.effective_chat.id)
+            text = edit_text(text or "", update.effective_chat.id, update.effective_sender.username)
             if update.message.video:
                 media = update.message.video
             if update.message.photo:
@@ -173,6 +178,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "caption": message.caption,
                 "message_id": message.message_id,
                 "sender_id": update.effective_chat.id,
+                "sender_username": update.effective_sender.username,
             }
             jobs = context.job_queue.get_jobs_by_name(str(message.media_group_id))
             if jobs:
