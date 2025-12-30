@@ -35,6 +35,7 @@ survey_id = os.getenv("CHAT_SURVEYS")
 main_chat = int(os.getenv("СHAT_MAIN"))
 unbanner = os.environ["UNBAN_REQUESTS"]
 logger = get_logger()
+dev_id = os.environ["DEV_ID"]
 
 MEDIA_GROUP_TYPES = {
     "audio": InputMediaAudio,
@@ -56,6 +57,7 @@ async def process_exception(bot, id, err: Exception):
     logger.exception(err)
     text = "Упс! Неизвестная ошибка. Пожалуйста, свяжитесь с админинстрацией."
     await bot.send_message(id, text)
+    await bot.send_message(dev_id, f"Error on prod survey: {err}")
 
 
 def edit_text(text: str, id: str, username: str | None) -> str:
