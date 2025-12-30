@@ -161,11 +161,15 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = edit_text(text or "", update.effective_chat.id, update.effective_sender.username)
             if update.message.video:
                 media = update.message.video
-            if update.message.photo:
+            elif update.message.photo:
                 media = update.message.photo[-1]
+            else:
+                await context.bot.send_message(update.effective_chat.id, "Поддерживается отправка только картинок и видео.")
+                logger.warning(f"Unsupported media type from {update.effective_chat.id}")
+                return
             await send_survey_media(media, text, context)
             await reply(context.bot, update.effective_chat.id)
-            logger.debug(f"Image processed for {update.effective_chat.id}")
+            logger.debug(f"Image or video processed for {update.effective_chat.id}")
         elif (message.photo or message.video) and message.media_group_id:
             media_type = effective_message_type(message)
             if message.photo:
@@ -197,6 +201,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Пожалуйста, отправьте картинки отдельным сообщением!"
                 "Если картинки и не было, то свяжитесь с админинстрацией. Простите!",
             )
+            logger.error(f"Message too long from {update.effective_chat.id}")
     except Exception as err:
         await process_exception(context.bot, update.effective_chat.id, err)
 
