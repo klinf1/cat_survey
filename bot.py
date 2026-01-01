@@ -1,4 +1,5 @@
 import os
+import traceback
 from typing import Literal, TypedDict, cast, List
 
 from telegram import (
@@ -57,7 +58,10 @@ async def process_exception(bot, id, err: Exception):
     logger.exception(err)
     text = "Упс! Неизвестная ошибка. Пожалуйста, свяжитесь с админинстрацией."
     await bot.send_message(id, text)
-    await bot.send_message(dev_id, f"Error on prod survey: {err}")
+    dev_text = f"Error on prod survey: {str(err)}\n" + traceback.format_exc()
+    messages = [dev_text[i:i+1900] for i in range(0, len(dev_text), 1900)]
+    for i in messages:
+        await bot.send_message(dev_id, i)
 
 
 def edit_text(text: str, id: str, username: str | None) -> str:
