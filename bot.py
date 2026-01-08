@@ -352,7 +352,7 @@ def main() -> None:
         )
     )
     app.add_handler(CallbackQueryHandler(unban_request_callback))
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, timeout=120)
 
 
 if __name__ == "__main__":
