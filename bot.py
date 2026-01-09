@@ -196,7 +196,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 context.job_queue.run_once(
                     callback=send_survey_media_group,
-                    when=10,
+                    when=30,
                     data=[msg_dict],
                     name=str(message.media_group_id),
                 )
@@ -331,7 +331,7 @@ async def unban_request_callback(update: Update, context: ContextTypes.DEFAULT_T
 def main() -> None:
     create_tables()
     app = (
-        Application.builder().token(os.getenv("TOKEN")).write_timeout(30).media_write_timeout(100).build()
+        Application.builder().token(os.getenv("TOKEN")).write_timeout(30).media_write_timeout(100).read_timeout(30).build()
     )  # type: ignore
     app.add_handler(ChatMemberHandler(user_banned_in_main, chat_member_types=ChatMemberHandler.CHAT_MEMBER, chat_id=main_chat))
     app.add_handler(CommandHandler("ban", ban_user))
