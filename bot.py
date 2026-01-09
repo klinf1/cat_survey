@@ -331,7 +331,7 @@ async def unban_request_callback(update: Update, context: ContextTypes.DEFAULT_T
 def main() -> None:
     create_tables()
     app = (
-        Application.builder().token(os.getenv("TOKEN")).build()
+        Application.builder().token(os.getenv("TOKEN")).write_timeout(30).media_write_timeout(100).build()
     )  # type: ignore
     app.add_handler(ChatMemberHandler(user_banned_in_main, chat_member_types=ChatMemberHandler.CHAT_MEMBER, chat_id=main_chat))
     app.add_handler(CommandHandler("ban", ban_user))
