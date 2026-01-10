@@ -1,3 +1,4 @@
+import asyncio
 import os
 import traceback
 from typing import Literal, TypedDict, cast, List
@@ -16,6 +17,7 @@ from telegram import (
     InlineKeyboardButton,
 )
 from telegram.helpers import effective_message_type
+from telegram.error import TimedOut
 from telegram.ext import (
     Application,
     ContextTypes,
@@ -93,7 +95,21 @@ async def reply(bot, id):
 async def send_survey(message: str, context: ContextTypes.DEFAULT_TYPE):
     messages = [message[i:i+1900] for i in range(0, len(message), 1900)]
     for message in messages:
-        await context.bot.send_message(survey_id, message)
+        try:
+            await context.bot.send_message(survey_id, message)
+        except TimedOut as e:
+            logger.warning(e)
+            count = 0
+            while count < 3:
+                await asyncio.sleep(2)
+                try:
+                    await context.bot.send_message(survey_id, message)
+                    break
+                except TimedOut as e:
+                    count +=1
+                    pass
+            if count >= 3:
+                raise Exception from e
 
 
 async def send_survey_media(media, caption: str, context: ContextTypes.DEFAULT_TYPE):
