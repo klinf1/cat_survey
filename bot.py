@@ -58,7 +58,7 @@ async def process_exception(bot, id, err: Exception):
     logger.exception(err)
     text = "Упс! Неизвестная ошибка. Пожалуйста, свяжитесь с админинстрацией."
     await bot.send_message(id, text)
-    dev_text = f"Error on prod survey: {str(err)}\n" + traceback.format_exc()
+    dev_text = f"Error on prod survey for {id}: {str(err)}\n" + traceback.format_exc()
     messages = [dev_text[i:i+1900] for i in range(0, len(dev_text), 1900)]
     for i in messages:
         await bot.send_message(dev_id, i)
@@ -108,15 +108,16 @@ async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
     context.job.data = cast(List[MsgDict], context.job.data)
     media = []
     sender = context.job.data[0].get("sender_id")
+    text = ""
     for msg_dict in context.job.data:
-        caption = (
+        text += (
             edit_text(msg_dict["caption"], str(msg_dict["sender_id"]), msg_dict["sender_username"])
             if msg_dict["caption"]
-            else msg_dict["caption"]
+            else ""
         )
         media.append(
             MEDIA_GROUP_TYPES[msg_dict["media_type"]](
-                media=msg_dict["media_id"], caption=caption
+                media=msg_dict["media_id"]
             )
         )
     if not media:
@@ -128,6 +129,7 @@ async def send_survey_media_group(context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await bot.send_media_group(survey_id, media)
+        await send_survey(text, context)
         await reply(bot, sender)
         logger.debug(f"Media group processed for {sender}")
 
