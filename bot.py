@@ -86,7 +86,12 @@ async def answer_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id, reply_text)
         logger.debug(f"Answered back to {chat_id}")
     except Exception as err:
-        await process_exception(context.bot, survey_id, err)
+        logger.exception(f"Error answering back to {chat_id}: {traceback.format_exc()}")
+        await context.bot.send_message(survey_id, f"Ошибка при ответе юзеру {chat_id}!")
+        dev_text = f"Error on prod survey answer for {chat_id}: {str(err)}\n" + traceback.format_exc()
+        messages = [dev_text[i:i+1900] for i in range(0, len(dev_text), 1900)]
+        for i in messages:
+            await context.bot.send_message(dev_id, i)
 
 
 async def reply(bot, id):
