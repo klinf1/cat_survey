@@ -82,7 +82,11 @@ async def answer_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     full_text: str = update.message.text.replace("/answer", "")
     chat_id, reply_text = full_text.strip().split("\n", 1)
-    await context.bot.send_message(chat_id, reply_text)
+    try:
+        await context.bot.send_message(chat_id, reply_text)
+        logger.debug(f"Answered back to {chat_id}")
+    except Exception as err:
+        await process_exception(context.bot, survey_id, err)
 
 
 async def reply(bot, id):
