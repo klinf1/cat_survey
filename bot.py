@@ -114,8 +114,9 @@ async def send_survey(message: str, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await context.bot.send_message(survey_id, message)
                     break
-                except TimedOut as e:
+                except TimedOut as err:
                     count +=1
+                    logger.warning(f"Timed out time {count} {err}")
                     pass
             if count >= 3:
                 raise Exception from e
